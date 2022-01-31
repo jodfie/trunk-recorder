@@ -58,7 +58,7 @@ dmr_slot::dmr_slot(const int chan, const int debug, int msgq_id, gr::msg_queue::
 	d_type(0),
 	d_cc(0),
 	d_msgq_id(msgq_id),
-	d_debug(debug),
+	d_debug(11),
 	d_chan(chan),
 	d_slot_mask(3),
 	d_msg_queue(queue)
