@@ -204,7 +204,7 @@ p25_frame_assembler_impl::general_work (int noutput_items,
         // If there were any voice samples that were received, they are just silence and can be dropped.
           
         if (terminate_call) {
-          BOOST_LOG_TRIVIAL(trace) << "P25 Frame Assembler - Terminate - Amt Prod: " << amt_produce << " noutput_items: " <<  noutput_items;
+          BOOST_LOG_TRIVIAL(info) << "P25 Frame Assembler - Terminate - Amt Prod: " << amt_produce << " noutput_items: " <<  noutput_items;
         
           add_item_tag(0, nitems_written(0), pmt::intern("terminate"), pmt::from_long(1), d_tag_src );
           
