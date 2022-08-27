@@ -62,6 +62,9 @@ namespace gr {
       virtual void set_phase2_tdma(bool p) {}
       virtual void clear() {};
       virtual  void clear_silence_frame_count() {};
+      virtual void crypt_reset(void) {}
+      virtual void crypt_key(uint16_t keyid, uint8_t algid, const std::vector<uint8_t> &key) {}
+
     };
 
   } // namespace op25_repeater

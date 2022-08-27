@@ -38,6 +38,7 @@
 #include "p25_frame.h"
 #include "p25_framer.h"
 #include "rs.h"
+#include "p25_crypt_algs.h"
 #include "imbe_vocoder/imbe_vocoder.h"
 
 namespace gr {
@@ -196,8 +197,9 @@ namespace gr {
             if (d_debug >= 10)
                 fprintf(stderr, "%s p25p1_fdma::set_nac: 0x%03x\n", logts.get(d_msgq_id), d_nac);
         }
+      
 
-        p25p1_fdma::p25p1_fdma(int sys_num,const op25_audio& udp, int debug, bool do_imbe, bool do_output, bool do_msgq, gr::msg_queue::sptr queue, std::deque<int16_t> &output_queue, bool do_audio_output, bool do_nocrypt, int msgq_id) :
+        p25p1_fdma::p25p1_fdma(int sys_num,const op25_audio& udp, log_ts& logger, int debug, bool do_imbe, bool do_output, bool do_msgq, gr::msg_queue::sptr queue, std::deque<int16_t> &output_queue, bool do_audio_output,bool do_nocrypt, int msgq_id) :
             write_bufp(0),
             d_debug(debug),
             d_do_imbe(do_imbe),
@@ -205,13 +207,14 @@ namespace gr {
             d_do_msgq(do_msgq),
             d_msgq_id(msgq_id),
             d_do_audio_output(do_audio_output),
-            d_do_nocrypt(do_nocrypt),
             d_nac(0),
             d_msg_queue(queue),
             output_queue(output_queue),
-            framer(new p25_framer(debug, msgq_id)),
+            framer(new p25_framer(logger, debug, msgq_id)),
             qtimer(op25_timer(TIMEOUT_THRESHOLD)),
             op25audio(udp),
+            logts(logger),
+            crypt_algs(logger, debug, msgq_id),
             ess_keyid(0),
             ess_algid(0x80),
             vf_tgid(0),
@@ -344,10 +347,15 @@ namespace gr {
                 fprintf (stderr, "\n");
             }
 
-            process_voice(A);
+            process_voice(A, FT_LDU1);
         }
 
         void p25p1_fdma::process_LDU2(const bit_vector& A) {
+            uint16_t next_keyid;
+            uint8_t  next_algid;
+            uint8_t  next_mi[9] = {0};
+            bool next_ess_valid = false;
+
             if (d_debug >= 10) {
                 fprintf (stderr, "%s NAC 0x%03x LDU2: ", logts.get(d_msgq_id), framer->nac);
             }
@@ -358,24 +366,33 @@ namespace gr {
             int i, j, ec;
             ec = rs8.decode(HB); // Reed Solomon (24,16,9) error correction
             if ((ec >= 0) && (ec <= 4)) {	// upper limit of 4 corrections
-                j = 39;												// 72 bit MI
+                j = 39;                                                             // 72 bit MI
                 for (i = 0; i < 9;) {
-                    ess_mi[i++] = (uint8_t)  (HB[j  ]         << 2) + (HB[j+1] >> 4);
-                    ess_mi[i++] = (uint8_t) ((HB[j+1] & 0x0f) << 4) + (HB[j+2] >> 2);
-                    ess_mi[i++] = (uint8_t) ((HB[j+2] & 0x03) << 6) +  HB[j+3];
+                    next_mi[i++] = (uint8_t)  (HB[j  ]         << 2) + (HB[j+1] >> 4);
+                    next_mi[i++] = (uint8_t) ((HB[j+1] & 0x0f) << 4) + (HB[j+2] >> 2);
+                    next_mi[i++] = (uint8_t) ((HB[j+2] & 0x03) << 6) +  HB[j+3];
                     j += 4;
                 }
-                ess_algid =  (HB[j  ]         <<  2) + (HB[j+1] >> 4);					// 8 bit AlgId
-                ess_keyid = ((HB[j+1] & 0x0f) << 12) + (HB[j+2] << 6) + HB[j+3];			// 16 bit KeyId
+                next_algid =  (HB[j  ]         <<  2) + (HB[j+1] >> 4);             //  8 bit AlgId
+                next_keyid = ((HB[j+1] & 0x0f) << 12) + (HB[j+2] << 6) + HB[j+3];   // 16 bit KeyId
+                next_ess_valid = true;
 
                 if (d_debug >= 10) {
                     fprintf (stderr, "ESS: algid=%x, keyid=%x, mi=%02x %02x %02x %02x %02x %02x %02x %02x %02x, rs_errs=%d\n",
-                            ess_algid, ess_keyid,
-                            ess_mi[0], ess_mi[1], ess_mi[2], ess_mi[3], ess_mi[4], ess_mi[5],ess_mi[6], ess_mi[7], ess_mi[8],
+                            next_algid, next_keyid,
+                            next_mi[0], next_mi[1], next_mi[2], next_mi[3], next_mi[4], next_mi[5], next_mi[6], next_mi[7], next_mi[8],
                             ec); 
                 }
             }
-            process_voice(A);
+
+            process_voice(A, FT_LDU2);
+
+            // replace existing ess with newly received data now that voice processing is complete
+            if (next_ess_valid) {
+                ess_algid = next_algid;
+                ess_keyid = next_keyid;
+                memcpy(ess_mi, next_mi, sizeof(next_mi));
+            }
         }
 
         void p25p1_fdma::process_TTDU() {
@@ -624,13 +641,17 @@ namespace gr {
             return (bl_cnt > 0) ? 0 : -1;
         }
 
-        void p25p1_fdma::process_voice(const bit_vector& A) {
+        void p25p1_fdma::process_voice(const bit_vector& A, const frame_type fr_type) {
             if (d_do_imbe || d_do_audio_output) {
+                if (encrypted())
+                    crypt_algs.prepare(ess_algid, ess_keyid, fr_type, ess_mi);
+
                 for(size_t i = 0; i < nof_voice_codewords; ++i) {
                     voice_codeword cw(voice_codeword_sz);
                     uint32_t E0, ET;
                     uint32_t u[8];
                     char s[128];
+                    bool audio_valid = !encrypted();
                     size_t errs = 0;
                     imbe_deinterleave(A, cw, i);
                     uint16_t imbe_error = 0;
@@ -738,6 +759,14 @@ namespace gr {
 
         void p25p1_fdma::reset_timer() {
             qtimer.reset();
+        }
+
+        void p25p1_fdma::crypt_reset() {
+            crypt_algs.reset();
+        }
+
+        void p25p1_fdma::crypt_key(uint16_t keyid, uint8_t algid, const std::vector<uint8_t> &key) {
+            crypt_algs.key(keyid, algid, key);
         }
 
         void p25p1_fdma::send_msg(const std::string msg_str, long msg_type) {

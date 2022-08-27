@@ -37,17 +37,6 @@
 namespace gr {
   namespace op25_repeater {
 
-    /* This is for the TPS Analog decoder */
-    void p25_frame_assembler_impl::p25p2_queue_msg(int duid) {
-      static const unsigned char wbuf[2] = {0xff, 0xff}; // dummy NAC
-      if (!d_do_msgq)
-        return;
-      if (d_msg_queue->full_p())
-        return;
-      gr::message::sptr msg = gr::message::make_from_string(std::string((const char *)wbuf, 2), duid, d_sys_num, 0);
-      d_msg_queue->insert_tail(msg);
-    }
-
     void p25_frame_assembler_impl::set_xormask(const char*p) {
 		p2tdma.set_xormask(p);
     }
@@ -74,6 +63,20 @@ namespace gr {
 		p2tdma.set_debug(debug);
     }
 
+    void p25_frame_assembler_impl::crypt_reset() {
+        p1fdma.crypt_reset();
+        p2tdma.crypt_reset();
+    }
+
+    void p25_frame_assembler_impl::crypt_key(uint16_t keyid, uint8_t algid, const std::vector<uint8_t> &key) {
+        if (d_debug >= 10) {
+            std::string k_str = uint8_vector_to_hex_string(key);
+            fprintf(stderr, "%s p25_frame_assembler_impl::crypt_key: setting keyid(0x%x), algid(0x%x), key(0x%s)\n", logts.get(0), keyid, algid, k_str.c_str());
+        }
+        p1fdma.crypt_key(keyid, algid, key);
+        p2tdma.crypt_key(keyid, algid, key);
+    }
+
     p25_frame_assembler::sptr
     p25_frame_assembler::make(int sys_num, int silence_frames, const char *udp_host, int port, int debug, bool do_imbe, bool do_output, bool do_msgq, gr::msg_queue::sptr queue, bool do_audio_output, bool do_phase2_tdma, bool do_nocrypt) {
       return gnuradio::get_initial_sptr(new p25_frame_assembler_impl(sys_num, silence_frames, udp_host, port, debug, do_imbe, do_output, do_msgq, queue, do_audio_output, do_phase2_tdma, do_nocrypt));
@@ -93,6 +96,18 @@ namespace gr {
 static const int MIN_IN = 1;	// mininum number of input streams
 static const int MAX_IN = 1;	// maximum number of input streams
 
+    /* This is for the TPS Analog decoder */
+    void p25_frame_assembler_impl::p25p2_queue_msg(int duid) {
+      static const unsigned char wbuf[2] = {0xff, 0xff}; // dummy NAC
+      if (!d_do_msgq)
+        return;
+      if (d_msg_queue->full_p())
+        return;
+      gr::message::sptr msg = gr::message::make_from_string(std::string((const char *)wbuf, 2), duid, d_sys_num, 0);
+      d_msg_queue->insert_tail(msg);
+    }
+
+
 /*
  * The private constructor
  */
@@ -102,11 +117,11 @@ static const int MAX_IN = 1;	// maximum number of input streams
 		   gr::io_signature::make ((do_output) ? 1 : 0, (do_output) ? 1 : 0, (do_audio_output && do_output) ? sizeof(int16_t) : ((do_output) ? sizeof(char) : 0 ))),
 	d_do_imbe(do_imbe),
 	d_do_output(do_output),
-  p1fdma(sys_num, op25audio, debug, do_imbe, do_output, do_msgq, queue, output_queue, do_audio_output, do_nocrypt),
+  p1fdma(sys_num, op25audio, logts, debug, do_imbe, do_output, do_msgq, queue, output_queue, do_audio_output, do_nocrypt),
 	d_do_audio_output(do_audio_output),
 	d_do_phase2_tdma(do_phase2_tdma),
 	d_do_nocrypt(do_nocrypt),
-	p2tdma(op25audio, 0, debug, do_msgq, queue, output_queue, do_audio_output, do_nocrypt),
+	p2tdma(op25audio, logts, 0, debug, do_msgq, queue, output_queue, do_audio_output, do_nocrypt),
 	d_do_msgq(do_msgq),
 	d_msg_queue(queue),
 	output_queue(),

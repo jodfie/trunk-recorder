@@ -34,6 +34,7 @@
 #include "p25p1_fdma.h"
 #include "p25p2_tdma.h"
 #include "op25_audio.h"
+#include "log_ts.h"
 
 typedef std::deque<uint8_t> dibit_queue;
 
@@ -43,6 +44,7 @@ namespace gr {
     class p25_frame_assembler_impl : public p25_frame_assembler
     {
      private:
+        int d_debug;
 	bool d_do_imbe;
 	bool d_do_output;
 	p25p1_fdma p1fdma;
@@ -74,9 +76,13 @@ namespace gr {
 
   void p25p2_queue_msg(int duid);
   void set_phase2_tdma(bool p);
+  void crypt_reset();
+  void crypt_key(uint16_t keyid, uint8_t algid, const std::vector<uint8_t> &key);
+
+
 
  public:
-
+    log_ts logts;
    virtual void forecast(int nof_output_items, gr_vector_int &nof_input_items_reqd);
 
       // Nothing to declare in this block.
