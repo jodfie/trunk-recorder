@@ -852,6 +852,7 @@ void manage_calls() {
 
     // If a call's state has been set to COMPLETED, we can conclude the call and delete it
     // we need to check the Call State again because it could have been updated by the previous command.
+    // I am pretty sure this block will never be called.
     if (call->get_state() == COMPLETED) {
 
       call->conclude_call();
@@ -868,7 +869,7 @@ void manage_calls() {
     }
 
     // We are checking to make sure a Call hasn't gotten stuck. If it is in the INACTIVE state
-    if (state == INACTIVE) {
+    if (call->get_state() == INACTIVE) {
       Recorder *recorder = call->get_recorder();
       if (recorder != NULL) {
 
@@ -992,6 +993,8 @@ void handle_call_grant(TrunkMessage message, System *sys) {
         call->set_record_more_transmissions(true);
       }
       if (call->get_state() == INACTIVE) {
+        BOOST_LOG_TRIVIAL(info) << "[" << call->get_short_name() << "]\t\033[0;34m" << call->get_call_num() << "C\tTG: " << call->get_talkgroup_display() << "\tFreq: " << format_freq(call->get_freq()) << "\t\u001b[36m GRANT Message for existing Call that was set to INACTIVE \u001b[0m";
+
         call->set_record_more_transmissions(true);
         call->set_state(RECORDING);
       }
