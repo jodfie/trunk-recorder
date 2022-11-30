@@ -210,6 +210,10 @@ p25_frame_assembler_impl::general_work (int noutput_items,
     } else  if (amt_produce > 0) {
           long src_id = p1fdma.get_curr_src_id();
 
+          if (terminate_call) {
+           BOOST_LOG_TRIVIAL(error) << "\t FRAME ASSEMBLER - IGNORING ADDING TERMINATE TAG\t AMT_PRODUCE: " << amt_produce;
+          }
+
           // If a SRC wasn't received on the voice channel since the last check, it will be -1
           if (src_id > 0) {
             add_item_tag(0, nitems_written(0), d_tag_key, pmt::from_long(src_id), d_tag_src);
@@ -225,6 +229,7 @@ p25_frame_assembler_impl::general_work (int noutput_items,
           silence_frame_count = d_silence_frames;
         } else {
             if (terminate_call) {
+            BOOST_LOG_TRIVIAL(error)  << "\t FRAME ASSEMBLER - ADDING TERMINATE TAG\t AMT_PRODUCE: " << amt_produce;
             add_item_tag(0, nitems_written(0), pmt::intern("terminate"), pmt::from_long(1), d_tag_src );
             
             Rx_Status status = p1fdma.get_rx_status();
