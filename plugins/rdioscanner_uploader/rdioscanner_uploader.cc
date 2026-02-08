@@ -76,6 +76,10 @@ private:
       return false;
     }
 
+    static bool is_success_http_status(long code) {
+      return code >= 200 && code < 300;
+    }
+
     static bool passes_talkgroup_filter(const Rdio_Scanner_System* sys, uint32_t talkgroup) {
       if (!sys) return true; // no system config => don't filter here
       const std::string tg = std::to_string(talkgroup);
