@@ -357,13 +357,10 @@ void remove_call_files(Call_Data_t call_info, bool plugin_failure=false) {
 
   if (plugin_failure) {
     std::string loghdr = log_header( call_info.short_name, call_info.call_num, call_info.talkgroup_display , call_info.freq);
-    switch (call_info.archive_files_on_failure) {
-      case true:
-        BOOST_LOG_TRIVIAL(error) << loghdr << "Upload failed after " << call_info.retry_attempt << " attempts - " <<  Color::GRN << "Archiving files" << Color::RST;
-        break;
-      case false:
-        BOOST_LOG_TRIVIAL(error) << loghdr << "Upload failed after " << call_info.retry_attempt << " attempts - " << Color::RED << "Removing files" << Color::RST;
-        break;
+    if (call_info.archive_files_on_failure) {
+      BOOST_LOG_TRIVIAL(error) << loghdr << "Upload failed after " << call_info.retry_attempt << " attempts - " <<  Color::GRN << "Archiving files" << Color::RST;
+    } else {
+      BOOST_LOG_TRIVIAL(error) << loghdr << "Upload failed after " << call_info.retry_attempt << " attempts - " << Color::RED << "Removing files" << Color::RST;
     }
   }
 
