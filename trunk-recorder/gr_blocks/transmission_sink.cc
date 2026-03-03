@@ -168,6 +168,7 @@ bool transmission_sink::start_recording(Call *call) {
 
 
   curr_src_id = d_current_call->get_current_source_id();
+  cached_src_id = -1;
   d_sample_count = 0;
 
   // when a wav_sink first gets associated with a call, set its lifecycle to idle;
@@ -237,25 +238,32 @@ void transmission_sink::set_source(long src) {
     BOOST_LOG_TRIVIAL(info) << loghdr << "Unit ID set via Control Channel, ext: " << src << "\tcurrent: " << curr_src_id << "\t samples: " << d_sample_count;
 
     curr_src_id = src;
-  }
-  else if (d_conventional && (src != curr_src_id)) {
-    if ((state == RECORDING) && (d_sample_count > 0)) {
-        gr::thread::scoped_lock guard(d_mutex);
-        BOOST_LOG_TRIVIAL(error) << loghdr << "Unit ID externally set, ext: " << src << "\tcurrent: " << curr_src_id << "\t samples: " << d_sample_count;
-        end_transmission();
-        state = IDLE;
-        curr_src_id = src;
-    }
+  } else  if (src != curr_src_id) {
+    if (d_conventional) {
+      if ((state == RECORDING) && (d_sample_count > 0)) {
+          gr::thread::scoped_lock guard(d_mutex);
+          BOOST_LOG_TRIVIAL(error) << loghdr << "Unit ID externally set, ext: " << src << "\tcurrent: " << curr_src_id << "\t samples: " << d_sample_count;
+          end_transmission();
+          state = IDLE;
+          curr_src_id = src;
+      }
 
+    } else {
+      // this is a trunked system, where the existing source ID does not match the ID that just came in as a GRANT message
+      BOOST_LOG_TRIVIAL(error) << loghdr << "Unit ID externally set from GRANT: " << src << "\t caching, doesn't match current: " << curr_src_id << "\t samples: " << d_sample_count << "\t state: " << format_state(state);
+      cached_src_id = src;      
+    }
   }
 }
 
 void transmission_sink::end_transmission() {
+  std::string loghdr = log_header(d_current_call_short_name,d_current_call_num,d_current_call_talkgroup_display,d_current_call_freq);
+  
   if (d_sample_count > 0) {
     if (d_fp) {
       close_wav(false);
     } else {
-      BOOST_LOG_TRIVIAL(error) << "Ending transmission, sample_count is greater than 0 but d_fp is null" << std::endl;
+      BOOST_LOG_TRIVIAL(error) << loghdr <<  "Ending transmission, sample_count is greater than 0 but d_fp is null" << std::endl;
     }
 
     const std::int64_t dur_ms = (d_nchans > 0)
@@ -269,7 +277,20 @@ void transmission_sink::end_transmission() {
 
     // Build Transmission using the canonical fields
     Transmission transmission;
-    transmission.source = curr_src_id;      // Source ID for the Call
+
+    // if we don't have a curr_src_id and we cached one in the previous transmission, use it
+    if ((curr_src_id == -1) && (cached_src_id != -1 )) {
+      transmission.source = cached_src_id;
+      BOOST_LOG_TRIVIAL(info) << loghdr << "Using cached ID: " << cached_src_id << " for Transmission: " << sizeof(transmission_list);
+      cached_src_id = -1;
+      
+    } else {
+      transmission.source = curr_src_id;      // Source ID for the Call
+    }
+    // if the Src ID was cached in the previous transmission, but we got it on the Voice channel, the reset the cache.
+    if ((cached_src_id != -1) && (curr_src_id == cached_src_id)) {
+      cached_src_id = -1;
+    }
     transmission.start_time = d_start_time; // Start time of the Call
     transmission.stop_time = d_stop_time;   // when the Call eneded
     transmission.start_time_ms  = d_start_time_ms;

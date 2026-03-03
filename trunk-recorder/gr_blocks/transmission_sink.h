@@ -59,6 +59,7 @@ private:
   long d_spike_count;
   long d_error_count;
   long curr_src_id;
+  long cached_src_id;
   unsigned int d_current_color_code;
   std::string current_filename;
   Call *d_current_call;
