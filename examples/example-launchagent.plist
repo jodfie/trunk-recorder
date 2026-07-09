@@ -59,6 +59,19 @@
     <true/>
 
     <!--
+        Tell macOS to treat this agent like an interactive process. Without
+        this, launchd agents get aggressive power management: macOS may
+        suspend the USB controller your SDR is attached to, silently killing
+        the data channel while the process keeps running at high CPU with no
+        recordings and no log output. Interactive reduces that throttling.
+        Pair this with `caffeinate` in the launcher script (see
+        auto-restart-mac.sh) — the two together keep the SDR's USB controller
+        awake. This matters most for USRP/UHD sources.
+    -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <!--
         Restart the process automatically whenever it exits — whether due to
         a crash, an error, or a clean exit. This is the primary restart
         mechanism when using the simplified exec-based launcher script.
